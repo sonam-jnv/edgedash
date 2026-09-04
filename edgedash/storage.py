@@ -89,6 +89,25 @@ def _sanitize_db_url(url: str) -> str:
     return url
 
 
+def _find_postgres_url_in_secrets(secrets_obj: Any) -> str | None:
+    """Recursively search for a PostgreSQL connection string in Streamlit secrets."""
+    if isinstance(secrets_obj, str):
+        s = secrets_obj.strip().strip('"').strip("'")
+        if s.startswith("postgresql://") or s.startswith("postgres://"):
+            return s
+    elif isinstance(secrets_obj, dict) or hasattr(secrets_obj, "items"):
+        for key in ["DATABASE_URL", "database_url", "POSTGRES_URL", "postgres_url", "url", "uri"]:
+            if key in secrets_obj:
+                res = _find_postgres_url_in_secrets(secrets_obj[key])
+                if res:
+                    return res
+        for _, v in secrets_obj.items():
+            res = _find_postgres_url_in_secrets(v)
+            if res:
+                return res
+    return None
+
+
 def _get_database_url() -> str | None:
     """Return DATABASE_URL from environment or Streamlit secrets if configured."""
     _load_dotenv()
@@ -96,11 +115,14 @@ def _get_database_url() -> str | None:
     if not url:
         try:
             import streamlit as st
-            if hasattr(st, "secrets") and "DATABASE_URL" in st.secrets:
-                url = str(st.secrets["DATABASE_URL"]).strip()
+            if hasattr(st, "secrets"):
+                found = _find_postgres_url_in_secrets(st.secrets)
+                if found:
+                    url = found
         except Exception:
             pass
     return _sanitize_db_url(url) if url else None
+
 
 
 
@@ -247,13 +269,23 @@ class _DBConnection:
         return s
 
     def commit(self) -> None:
-        self._raw.commit()
+        if self._is_pg:
+            if not getattr(self._raw, "autocommit", False):
+                self._raw.commit()
+        else:
+            self._raw.commit()
 
     def rollback(self) -> None:
-        self._raw.rollback()
+        if self._is_pg:
+            if not getattr(self._raw, "autocommit", False):
+                self._raw.rollback()
+        else:
+            self._raw.rollback()
 
     def close(self) -> None:
         self._raw.close()
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -436,8 +468,12 @@ def _connect(path: str) -> Generator[_DBConnection, None, None]:
     if is_pg:
         db_url = _get_database_url() or path
         driver = _get_pg_driver()
-        raw_conn = driver.connect(db_url)
+        try:
+            raw_conn = driver.connect(db_url, autocommit=True, prepare_threshold=None)
+        except TypeError:
+            raw_conn = driver.connect(db_url)
     else:
+
         raw_conn = sqlite3.connect(path)
         raw_conn.row_factory = sqlite3.Row
         raw_conn.execute("PRAGMA journal_mode=WAL;")
