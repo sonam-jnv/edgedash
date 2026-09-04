@@ -1,0 +1,114 @@
+# EdgeDash user configuration
+# Edit this file to match your profile. All fields are required unless marked optional.
+
+# The job title you are targeting (used in search queries and scoring)
+target_role: "Data Analyst"
+
+# City to restrict job searches to
+target_city: "Bengaluru"
+
+# Keywords to include in job search queries (at least one should match a listing)
+keywords:
+  - "data analyst"
+  - "business analyst"
+  - "SQL"
+  - "Python"
+  - "Power BI"
+  - "Tableau"
+
+# Your current skills (used for gap analysis and fit scoring)
+my_skills:
+  - "Python"
+  - "SQL"
+  - "Excel"
+  - "Pandas"
+  - "NumPy"
+  - "Tableau"
+  - "data cleaning"
+  - "statistical analysis"
+
+# Total years of relevant professional experience
+experience_years: 3
+
+# Path to the SQLite database file (relative to repo root, or absolute)
+db_path: "edgedash.db"
+
+# Minimum fit score (0–100) a listing must have to appear in the dashboard
+min_fit_score: 50
+
+# Job sources to enable (must match a registered Source name in edgedash/sources/)
+sources:
+  - "arbeitnow"
+
+# Set to true to use MockFetcher instead of the real Fetcher (offline development)
+use_mock_fetcher: false
+
+# LLM provider: "gemini" (needs GEMINI_API_KEY) or "ollama" (local, no key)
+llm_provider: "gemini"
+
+# Model name — must be valid for the chosen provider
+# gemini:  gemini-2.5-flash  (free tier)
+# ollama:  llama3  (or any model you have pulled locally)
+llm_model: "gemini-2.5-flash"
+
+
+# Maximum listings to score per cycle (caps cost and rate-limit exposure)
+llm_score_batch_size: 25
+# Skill alias map for canonicalisation.
+# THIS MAP IS YOURS TO EDIT: adding and tweaking entries is expected as you see your own data.
+# Format: raw_alias: canonical_name (lowercase)
+skill_aliases:
+  k8s: "kubernetes"
+  js: "javascript"
+  nodejs: "node.js"
+  node: "node.js"
+  node.js: "node.js"
+  postgresql: "postgres"
+  psql: "postgres"
+  postgres: "postgres"
+  google cloud: "gcp"
+  google cloud platform: "gcp"
+  gcp: "gcp"
+  ml: "machine learning"
+  machine learning: "machine learning"
+  ci cd: "ci/cd"
+  cicd: "ci/cd"
+  ci-cd: "ci/cd"
+  ci/cd: "ci/cd"
+  amazon web services: "aws"
+  amazon aws: "aws"
+  aws: "aws"
+  microsoft excel: "excel"
+  ms excel: "excel"
+  powerbi: "power bi"
+  microsoft power bi: "power bi"
+  ms power bi: "power bi"
+  ts: "typescript"
+  golang: "go"
+  reactjs: "react"
+  react.js: "react"
+  vuejs: "vue"
+  vue.js: "vue"
+  big query: "bigquery"
+  google bigquery: "bigquery"
+  mongo: "mongodb"
+  sklearn: "scikit-learn"
+  scikit learn: "scikit-learn"
+  tf: "tensorflow"
+  nlp: "natural language processing"
+  genai: "generative ai"
+  gen ai: "generative ai"
+
+# Verification thresholds (Rule 39)
+# Catches score compression/inflation where all scores fall into a narrow band
+min_score_spread: 10
+# Catches score clustering/low variance where scores lack differentiation
+min_score_stdev: 5.0
+# Catches a broken extractor where too many listings return no required skills
+max_empty_extraction_pct: 20.0
+# Catches model returning entire sentences or hallucinating excessive skills
+max_skills_per_listing: 20
+# Catches ranking a rumour when the top gap is derived from too small a sample
+min_gap_sample: 3
+# Catches stale data where ingestion or fetch pipelines have stalled
+max_data_age_days: 3
