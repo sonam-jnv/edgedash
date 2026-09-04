@@ -240,6 +240,15 @@ class _DBConnection:
             cur.close()
             return _CursorResult(rows, rowcount)
 
+    def executemany(self, sql: str, seq_of_params: Sequence[Sequence[Any]]) -> None:
+        adapted_sql = self._adapt_sql(sql)
+        if not self._is_pg:
+            self._raw.executemany(adapted_sql, seq_of_params)
+        else:
+            cur = self._raw.cursor()
+            cur.executemany(adapted_sql, seq_of_params)
+            cur.close()
+
     def _adapt_sql(self, sql: str) -> str:
         if not self._is_pg:
             return sql
@@ -263,6 +272,9 @@ class _DBConnection:
                 "remote_ok = EXCLUDED.remote_ok, "
                 "created_at = EXCLUDED.created_at;"
             )
+
+        # Escape literal % as %% for postgres drivers (so %V, etc. aren't treated as invalid placeholders)
+        s = s.replace("%", "%%")
 
         # Convert ? placeholders to %s for postgres drivers
         s = s.replace("?", "%s")
@@ -1266,6 +1278,130 @@ def _run_migrate(db_target: str) -> None:
 
 
 
+def _run_import_sqlite(sqlite_path: str, target: str) -> None:
+    """Transfer all data from a SQLite database into target database in fast batches."""
+    print(f"Importing data from SQLite ({sqlite_path}) into {target}...")
+    init_db(target)
+
+    import sqlite3
+    src = sqlite3.connect(sqlite_path)
+    src.row_factory = sqlite3.Row
+
+    with _connect(target) as conn:
+        # 1. Listings
+        rows = src.execute("SELECT * FROM listings").fetchall()
+        if rows:
+            params = [
+                (
+                    r["id"],
+                    r["title"],
+                    r["company"],
+                    r["location"],
+                    r["url"],
+                    r["description"] or "",
+                    r["source"],
+                    r["posted_at"] or "",
+                    r["fetched_at"] or _utcnow(),
+                )
+                for r in rows
+            ]
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO listings
+                    (id, title, company, location, url, description, source, posted_at, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                params,
+            )
+            # Update fit scores
+            score_params = [(r["fit_score"], r["fit_reason"], r["id"]) for r in rows if r["fit_score"] is not None]
+            if score_params:
+                conn.executemany(
+                    "UPDATE listings SET fit_score = ?, fit_reason = ? WHERE id = ?",
+                    score_params,
+                )
+            print(f"  - Imported {len(rows)} listings and scores.")
+
+        # 2. Cycle log
+        rows = src.execute("SELECT * FROM cycle_log").fetchall()
+        if rows:
+            params = [
+                (
+                    r["agent"],
+                    r["started_at"],
+                    r["finished_at"],
+                    r["records_touched"],
+                    r["status"],
+                    r["notes"],
+                )
+                for r in rows
+            ]
+            conn.executemany(
+                """
+                INSERT INTO cycle_log
+                    (agent, started_at, finished_at, records_touched, status, notes)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                params,
+            )
+            print(f"  - Imported {len(rows)} cycle log records.")
+
+        # 3. Extraction cache
+        rows = src.execute("SELECT * FROM extraction_cache").fetchall()
+        if rows:
+            params = [
+                (
+                    r["desc_hash"],
+                    r["required_skills"],
+                    r["nice_to_have"],
+                    r["seniority"],
+                    r["years_required"],
+                    r["remote_ok"],
+                    r["created_at"],
+                )
+                for r in rows
+            ]
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO extraction_cache
+                    (desc_hash, required_skills, nice_to_have, seniority, years_required, remote_ok, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                params,
+            )
+            print(f"  - Imported {len(rows)} extraction cache items.")
+
+        # 4. Skill gaps
+        try:
+            rows = src.execute("SELECT * FROM skill_gaps").fetchall()
+            if rows:
+                params = [
+                    (
+                        r["skill"],
+                        r["gap_score"],
+                        r["trend"],
+                        r["recommendation"],
+                        r["demand_count"],
+                        r["computed_at"],
+                    )
+                    for r in rows
+                ]
+                conn.executemany(
+                    """
+                    INSERT INTO skill_gaps
+                        (skill, gap_score, trend, recommendation, demand_count, computed_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    params,
+                )
+                print(f"  - Imported {len(rows)} skill gap rows.")
+        except Exception:
+            pass
+
+    src.close()
+    print("Import completed successfully!")
+
+
 def _run_check(db_target: str) -> None:
     """Check connection and print table row counts."""
     is_pg = _is_postgres(db_target)
@@ -1302,6 +1438,12 @@ def main() -> None:
         help="Print active backend, connection status, and row count per table.",
     )
     parser.add_argument(
+        "--import-sqlite",
+        type=str,
+        metavar="SQLITE_FILE",
+        help="Import listings, cycles, and cache from an existing SQLite database into the active target.",
+    )
+    parser.add_argument(
         "--db",
         type=str,
         default="edgedash.db",
@@ -1315,6 +1457,8 @@ def main() -> None:
 
     if args.migrate:
         _run_migrate(target)
+    elif args.import_sqlite:
+        _run_import_sqlite(args.import_sqlite, target)
     elif args.check:
         _run_check(target)
     else:
