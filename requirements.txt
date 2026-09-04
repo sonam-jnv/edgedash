@@ -1,8 +1,5 @@
-# EdgeDash Python dependencies for Streamlit Community Cloud deployment
-# Pinned versions, minimal and secure
-
-requests==2.32.3
-pyyaml==6.0.2
-streamlit==1.42.0
-psycopg[binary]==3.2.4
-google-generativeai==0.8.4
+streamlit
+requests
+pyyaml
+psycopg[binary]
+google-generativeai
