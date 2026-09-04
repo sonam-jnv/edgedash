@@ -107,7 +107,16 @@ _rate_limiter = _RateLimiter(min_interval=1.0, max_per_window=15, window_seconds
 # ---------------------------------------------------------------------------
 
 def _load_dotenv() -> None:
-    """Load .env from candidate paths into os.environ if not already set."""
+    """Load .env from candidate paths into os.environ if not already set, plus Streamlit secrets."""
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets"):
+            for k, v in st.secrets.items():
+                if isinstance(v, str) and k not in os.environ:
+                    os.environ[k] = v
+    except Exception:
+        pass
+
     candidates = [
         Path(__file__).parent.parent / ".env",
         Path(__file__).parent / ".env",
@@ -125,6 +134,7 @@ def _load_dotenv() -> None:
                     value = value.strip().strip('"').strip("'")
                     if key and key not in os.environ:
                         os.environ[key] = value
+
 
 
 # ---------------------------------------------------------------------------

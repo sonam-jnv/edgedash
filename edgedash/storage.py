@@ -36,7 +36,16 @@ logger = logging.getLogger("edgedash.storage")
 # ---------------------------------------------------------------------------
 
 def _load_dotenv() -> None:
-    """Load .env from candidate paths into os.environ if not already set."""
+    """Load .env from candidate paths into os.environ if not already set, plus Streamlit secrets."""
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets"):
+            for k, v in st.secrets.items():
+                if isinstance(v, str) and k not in os.environ:
+                    os.environ[k] = v
+    except Exception:
+        pass
+
     candidates = [
         Path(__file__).parent.parent / ".env",
         Path(__file__).parent / ".env",
@@ -81,10 +90,18 @@ def _sanitize_db_url(url: str) -> str:
 
 
 def _get_database_url() -> str | None:
-    """Return DATABASE_URL from environment if configured."""
+    """Return DATABASE_URL from environment or Streamlit secrets if configured."""
     _load_dotenv()
     url = os.environ.get("DATABASE_URL", "").strip()
+    if not url:
+        try:
+            import streamlit as st
+            if hasattr(st, "secrets") and "DATABASE_URL" in st.secrets:
+                url = str(st.secrets["DATABASE_URL"]).strip()
+        except Exception:
+            pass
     return _sanitize_db_url(url) if url else None
+
 
 
 def _is_postgres(path: str | None = None) -> bool:
